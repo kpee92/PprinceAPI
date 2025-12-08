@@ -4,6 +4,7 @@ const qrcode = require("qrcode");
 const { DataTypes } = require("sequelize");
 const sequelize = require("../db");
 const User = require("../models/user")(sequelize, DataTypes);
+const { sendEmail } = require("../utils/email");
 
 const registerUser = async (req, res) => {
   try {
@@ -12,15 +13,41 @@ const registerUser = async (req, res) => {
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Generate 6-digit token
+    const token = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Hash the token for storage
+    const hashedToken = await bcrypt.hash(token, 10);
+
     const user = await User.create({
       firstName,
       lastName,
       email,
       password: hashedPassword,
+      emailToken: hashedToken,
     });
 
+    // Send verification email
+    const verificationUrl = `http://localhost:3000/auth/confirm_email?token=${hashedToken}`;
+    const emailResult = await sendEmail(
+      email,
+      "Email Verification",
+      `Hello ${firstName},\n\n`,
+
+      `Please verify your email by clicking the link: ${verificationUrl}`,
+      `<p>Please verify your email by clicking the link: <a href="${verificationUrl}">${verificationUrl}</a></p>`,
+
+      `Thank you,`
+    );
+
+    if (!emailResult.success) {
+      console.error("Failed to send verification email:", emailResult.error);
+      // Still proceed with registration, but log the error
+    }
+
     res.status(201).json({
-      message: "User registered successfully",
+      message:
+        "User registered successfully. Please check your email for verification.",
       user: { id: user.id },
     });
   } catch (error) {
@@ -180,6 +207,11 @@ const loginUser = async (req, res) => {
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
+    // Check if email is verified
+    if (user.emailVerify !== 1) {
+      return res.status(403).json({ error: "Please verify your email first" });
+    }
+
     // Check password
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
@@ -226,6 +258,71 @@ const loginUser = async (req, res) => {
   }
 };
 
+const confirmEmail = async (req, res) => {
+  try {
+    const { token } = req.query;
+
+    if (!token) {
+      return res.status(400).json({ error: "Token is required" });
+    }
+
+    // Find user with matching emailToken (token is already hashed)
+    const user = await User.findOne({ where: { emailToken: token } });
+
+    if (!user) {
+      return res.status(400).json({ error: "Invalid or expired token" });
+    }
+
+    // Update user: set emailVerify to 1 and clear emailToken
+    await User.update(
+      { emailVerify: 1, emailToken: null },
+      { where: { id: user.id } }
+    );
+
+    res.json({ message: "Email verified successfully" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+const verifyEmail = async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return res.status(400).json({ error: "Token is required" });
+    }
+
+    // Find users with emailToken not null
+    const users = await User.findAll({
+      where: { emailToken: { [require("sequelize").Op.ne]: null } },
+    });
+
+    let verifiedUser = null;
+    for (const user of users) {
+      const isTokenValid = await bcrypt.compare(token, user.emailToken);
+      if (isTokenValid) {
+        verifiedUser = user;
+        break;
+      }
+    }
+
+    if (!verifiedUser) {
+      return res.status(404).json({ error: "Token not found" });
+    }
+
+    // Update user: set emailVerify to 1 and clear emailToken
+    await User.update(
+      { emailVerify: 1, emailToken: null },
+      { where: { id: verifiedUser.id } }
+    );
+
+    res.json({ message: "Email verified successfully" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 module.exports = {
   registerUser,
   getUsers,
@@ -236,4 +333,6 @@ module.exports = {
   twoFaEnable,
   twoFaVerify,
   loginUser,
+  confirmEmail,
+  verifyEmail,
 };

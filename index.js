@@ -5,6 +5,7 @@ const swaggerUi = require("swagger-ui-express");
 const swaggerJsdoc = require("swagger-jsdoc");
 const sequelize = require("./db");
 const userRoutes = require("./routes/userRoutes");
+const authRoutes = require("./routes/authRoutes");
 
 // Swagger definition
 const swaggerOptions = {
@@ -21,7 +22,7 @@ const swaggerOptions = {
       },
     ],
   },
-  apis: ["./routes/*.js"], // files containing annotations
+  apis: ["./routes/*.js", "./controllers/*.js"], // files containing annotations
 };
 
 const swaggerDocs = swaggerJsdoc(swaggerOptions);
@@ -39,6 +40,7 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
 // Routes
 app.use("/users", userRoutes);
+app.use("/auth", authRoutes);
 
 // Sync database and start server
 sequelize
