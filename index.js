@@ -1,0 +1,59 @@
+require("dotenv").config();
+const express = require("express");
+const cors = require("cors");
+const swaggerUi = require("swagger-ui-express");
+const swaggerJsdoc = require("swagger-jsdoc");
+const sequelize = require("./db");
+const userRoutes = require("./routes/userRoutes");
+
+// Swagger definition
+const swaggerOptions = {
+  definition: {
+    openapi: "3.0.0",
+    info: {
+      title: "Sequelize MySQL API",
+      version: "1.0.0",
+      description: "API for managing users with Sequelize and MySQL",
+    },
+    servers: [
+      {
+        url: "http://localhost:3000",
+      },
+    ],
+  },
+  apis: ["./routes/*.js"], // files containing annotations
+};
+
+const swaggerDocs = swaggerJsdoc(swaggerOptions);
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Swagger UI
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
+
+// Routes
+app.use("/users", userRoutes);
+
+// Sync database and start server
+sequelize
+  .sync()
+  .then(() => {
+    console.log("Database synced");
+    app.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}`);
+      console.log(
+        `Swagger docs available at http://localhost:${PORT}/api-docs`
+      );
+    });
+  })
+  .catch((error) => {
+    console.error("Unable to sync database:", error);
+  });
+
+module.exports = app;
