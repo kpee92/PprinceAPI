@@ -1,4 +1,5 @@
 const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 const speakeasy = require("speakeasy");
 const qrcode = require("qrcode");
 const { DataTypes } = require("sequelize");
@@ -28,16 +29,12 @@ const registerUser = async (req, res) => {
     });
 
     // Send verification email
-    const verificationUrl = `http://localhost:3000/auth/confirm_email?token=${hashedToken}`;
+    const verificationUrl = `http://localhost:3000/auth/confirm_email?token=${token}`;
     const emailResult = await sendEmail(
       email,
       "Email Verification",
-      `Hello ${firstName},\n\n`,
-
-      `Please verify your email by clicking the link: ${verificationUrl}`,
-      `<p>Please verify your email by clicking the link: <a href="${verificationUrl}">${verificationUrl}</a></p>`,
-
-      `Thank you,`
+      `Hello ${firstName},\n\nPlease verify your email by clicking the link: ${verificationUrl}`,
+      `<p>Hello ${firstName},</p><p>Please verify your email by clicking the button below:</p><a href="${verificationUrl}" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">Click Here to Verify Email</a><p>Thank you,</p>`
     );
 
     if (!emailResult.success) {
@@ -323,6 +320,93 @@ const verifyEmail = async (req, res) => {
   }
 };
 
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    // Find user by email
+    const user = await User.findOne({ where: { email } });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Generate 6-digit token
+    const token = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Hash the token for storage
+    const hashedToken = await bcrypt.hash(token, 10);
+
+    // Update user with resetToken
+    await User.update({ resetToken: hashedToken }, { where: { id: user.id } });
+
+    // Send reset email
+    const resetUrl = `http://localhost:3000/auth/forgot-password2?token=${token}`;
+    const emailResult = await sendEmail(
+      email,
+      "Password Reset",
+      `Hello ${user.firstName},\n\nPlease reset your password by clicking the link: ${resetUrl}`,
+      `<p>Hello ${user.firstName},</p><p>Please reset your password by clicking the button below:</p><a href="${resetUrl}" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">Reset Password</a><p>Thank you,</p>`
+    );
+
+    if (!emailResult.success) {
+      console.error("Failed to send reset email:", emailResult.error);
+      // Still proceed, but log the error
+    }
+
+    res.json({ message: "Password reset email sent successfully" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+const updatePassword = async (req, res) => {
+  try {
+    const token = req.body.token || req.query.token;
+    const { newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res
+        .status(400)
+        .json({ error: "Token and new password are required" });
+    }
+
+    // Find user with matching resetToken
+    const users = await User.findAll({
+      where: { resetToken: { [require("sequelize").Op.ne]: null } },
+    });
+
+    let verifiedUser = null;
+    for (const user of users) {
+      console.log("))))))))))))))))", user.resetToken, "llll", token);
+      if (token === user.resetToken) {
+        verifiedUser = user;
+        break;
+      }
+    }
+
+    if (!verifiedUser) {
+      return res.status(404).json({ error: "Token not found" });
+    }
+
+    // Hash the new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update user: set new password and clear resetToken
+    await User.update(
+      { password: hashedPassword, resetToken: null },
+      { where: { id: verifiedUser.id } }
+    );
+
+    res.json({ message: "Password updated successfully" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 module.exports = {
   registerUser,
   getUsers,
@@ -335,4 +419,6 @@ module.exports = {
   loginUser,
   confirmEmail,
   verifyEmail,
+  forgotPassword,
+  updatePassword,
 };
