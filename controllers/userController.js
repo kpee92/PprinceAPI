@@ -382,7 +382,8 @@ const updatePassword = async (req, res) => {
     let verifiedUser = null;
     for (const user of users) {
       console.log("))))))))))))))))", user.resetToken, "llll", token);
-      if (token === user.resetToken) {
+      const isTokenValid = await bcrypt.compare(token, user.resetToken);
+      if (isTokenValid) {
         verifiedUser = user;
         break;
       }
