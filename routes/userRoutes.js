@@ -10,6 +10,7 @@ const {
   twoFaVerify,
   loginUser,
 } = require("../controllers/userController");
+const { authenticateToken } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
@@ -18,11 +19,13 @@ const router = express.Router();
  * /users:
  *   get:
  *     summary: Get all users
+ *     security:
+ *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: List of users
  */
-router.get("/", getUsers);
+router.get("/", authenticateToken, getUsers);
 
 /**
  * @swagger
@@ -55,6 +58,8 @@ router.post("/register", registerUser);
  * /users:
  *   post:
  *     summary: Create a new user (without password hashing)
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -74,7 +79,7 @@ router.post("/register", registerUser);
  *       201:
  *         description: User created
  */
-router.post("/", createUser);
+router.post("/", authenticateToken, createUser);
 
 /**
  * @swagger
@@ -97,6 +102,17 @@ router.post("/", createUser);
  *     responses:
  *       200:
  *         description: Login successful or requires 2FA
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 token:
+ *                   type: string
+ *                 user:
+ *                   type: object
  */
 router.post("/login", loginUser);
 
@@ -105,6 +121,8 @@ router.post("/login", loginUser);
  * /users/{id}:
  *   get:
  *     summary: Get user by ID
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -116,13 +134,15 @@ router.post("/login", loginUser);
  *       200:
  *         description: User data
  */
-router.get("/:id", getUserById);
+router.get("/:id", authenticateToken, getUserById);
 
 /**
  * @swagger
  * /users/{id}:
  *   put:
  *     summary: Update user by ID
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -149,13 +169,15 @@ router.get("/:id", getUserById);
  *       200:
  *         description: User updated
  */
-router.put("/:id", updateUser);
+router.put("/:id", authenticateToken, updateUser);
 
 /**
  * @swagger
  * /users/{id}:
  *   delete:
  *     summary: Delete user by ID
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -167,13 +189,15 @@ router.put("/:id", updateUser);
  *       204:
  *         description: User deleted
  */
-router.delete("/:id", deleteUser);
+router.delete("/:id", authenticateToken, deleteUser);
 
 /**
  * @swagger
  * /users/twofa/enable:
  *   post:
  *     summary: Enable 2FA for a user
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -188,13 +212,15 @@ router.delete("/:id", deleteUser);
  *       200:
  *         description: 2FA setup data with QR code
  */
-router.post("/twofa/enable", twoFaEnable);
+router.post("/twofa/enable", authenticateToken, twoFaEnable);
 
 /**
  * @swagger
  * /users/twofa/verify:
  *   post:
  *     summary: Verify 2FA code and enable 2FA
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -211,6 +237,6 @@ router.post("/twofa/enable", twoFaEnable);
  *       200:
  *         description: 2FA enabled successfully
  */
-router.post("/twofa/verify", twoFaVerify);
+router.post("/twofa/verify", authenticateToken, twoFaVerify);
 
 module.exports = router;

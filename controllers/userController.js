@@ -239,9 +239,22 @@ const loginUser = async (req, res) => {
       }
     }
 
+    // Generate JWT token
+    const token = jwt.sign(
+      {
+        id: user.id,
+        email: user.email,
+      },
+      process.env.JWT_SECRET || "your-secret-key",
+      {
+        expiresIn: process.env.JWT_EXPIRES_IN || "24h", // Token expires in 24 hours
+      }
+    );
+
     // Login successful
     res.json({
       message: "Login successful",
+      token: token,
       user: {
         id: user.id,
         firstName: user.firstName,

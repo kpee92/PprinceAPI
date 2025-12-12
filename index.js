@@ -6,6 +6,7 @@ const swaggerJsdoc = require("swagger-jsdoc");
 const sequelize = require("./db");
 const userRoutes = require("./routes/userRoutes");
 const authRoutes = require("./routes/authRoutes");
+const paymentRoutes = require("./routes/paymentRoutes");
 
 // Swagger definition
 const swaggerOptions = {
@@ -21,14 +22,26 @@ const swaggerOptions = {
         url: "http://localhost:3000",
       },
     ],
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: "http",
+          scheme: "bearer",
+          bearerFormat: "JWT",
+          description: "Enter JWT token",
+        },
+      },
+    },
   },
   apis: ["./routes/*.js", "./controllers/*.js"], // files containing annotations
 };
 
-const swaggerDocs = swaggerJsdoc(swaggerOptions);
-
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3002;
+
+// Update Swagger server URL to match the actual port
+swaggerOptions.definition.servers[0].url = `http://localhost:${PORT}`;
+const swaggerDocs = swaggerJsdoc(swaggerOptions);
 
 // Middleware
 app.use(
@@ -47,6 +60,7 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 // Routes
 app.use("/users", userRoutes);
 app.use("/auth", authRoutes);
+app.use("/payments", paymentRoutes);
 
 // Sync database and start server
 sequelize
