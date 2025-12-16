@@ -37,20 +37,53 @@ const swaggerOptions = {
 };
 
 const app = express();
-const PORT = process.env.PORT || 3002;
+const PORT = process.env.PORT || 3000;
 
 // Update Swagger server URL to match the actual port
 swaggerOptions.definition.servers[0].url = `http://localhost:${PORT}`;
 const swaggerDocs = swaggerJsdoc(swaggerOptions);
 
+// CORS Configuration
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // In production, you should specify allowed origins
+    // For now, allow all origins for development
+    callback(null, true);
+    
+    // Example for production:
+    // const allowedOrigins = ['http://localhost:3000', 'https://yourdomain.com'];
+    // if (allowedOrigins.indexOf(origin) !== -1) {
+    //   callback(null, true);
+    // } else {
+    //   callback(new Error('Not allowed by CORS'));
+    // }
+  },
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-Requested-With",
+    "Accept",
+    "Origin",
+    "Access-Control-Request-Method",
+    "Access-Control-Request-Headers"
+  ],
+  exposedHeaders: ["Authorization"],
+  credentials: true, // Allow cookies/auth headers
+  preflightContinue: false,
+  optionsSuccessStatus: 204
+};
+
+// Apply CORS middleware
+app.use(cors(corsOptions));
+
+// Handle preflight requests explicitly
+app.options("*", cors(corsOptions));
+
 // Middleware
-app.use(
-  cors({
-    origin: "*",
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: "*",
-  })
-);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

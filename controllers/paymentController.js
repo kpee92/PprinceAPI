@@ -5,6 +5,53 @@ const sequelize = require('../db');
 const Payment = require('../models/payment')(sequelize, DataTypes);
 
 /**
+ * Query payment status from payment gateway
+ * This helps validate if a pre-authorization is still valid before capture
+ */
+const queryPaymentStatus = async (paymentId) => {
+  const entityId = process.env.PAYMENT_ENTITY_ID || '8ac7a4c79394bdc801939736f17e063d';
+  const authorization = process.env.PAYMENT_AUTHORIZATION || 'Bearer OGFjN2E0Yzc5Mzk0YmRjODAxOTM5NzM2ZjFhNzA2NDF8enlac1lYckc4QXk6bjYzI1NHNng=';
+  const paymentHost = process.env.PAYMENT_HOST || 'eu-test.oppwa.com';
+
+  const path = `/v1/payments/${paymentId}?entityId=${entityId}`;
+  
+  const options = {
+    port: 443,
+    host: paymentHost,
+    path: path,
+    method: 'GET',
+    headers: {
+      'Authorization': authorization
+    }
+  };
+
+  return new Promise((resolve, reject) => {
+    const getRequest = https.request(options, function(response) {
+      const buf = [];
+      response.on('data', chunk => {
+        buf.push(Buffer.from(chunk));
+      });
+      response.on('end', () => {
+        const jsonString = Buffer.concat(buf).toString('utf8');
+        try {
+          const parsedResponse = JSON.parse(jsonString);
+          resolve({
+            statusCode: response.statusCode,
+            data: parsedResponse
+          });
+        } catch (error) {
+          reject(new Error(`Failed to parse response: ${error.message}`));
+        }
+      });
+    });
+    getRequest.on('error', (error) => {
+      reject(new Error(`Payment status query failed: ${error.message}`));
+    });
+    getRequest.end();
+  });
+};
+
+/**
  * Pre-authorize payment
  * Accepts payment details from frontend and processes payment through OPP
  */
@@ -19,9 +66,9 @@ const preAuthorizePayment = async (req, res) => {
     } = req.body;
 
     // Validate required fields
-    if (!amount || !currency || !paymentBrand || !paymentType) {
+    if (!amount || !currency || !paymentBrand) {
       return res.status(400).json({
-        error: 'Missing required fields: amount, currency, paymentBrand, and paymentType are required'
+        error: 'Missing required fields: amount, currency, and paymentBrand are required'
       });
     }
 
@@ -30,6 +77,10 @@ const preAuthorizePayment = async (req, res) => {
         error: 'Missing required card details: number, holder, expiryMonth, expiryYear, and cvv are required'
       });
     }
+
+    // Force paymentType to 'PA' (Pre-Authorization) for this endpoint
+    // This ensures the payment is only authorized, not immediately captured
+    const paymentTypeForPreAuth = 'PA';
 
     // Configuration - consider moving these to environment variables
     const entityId = process.env.PAYMENT_ENTITY_ID || '8ac7a4c79394bdc801939736f17e063d';
@@ -42,7 +93,7 @@ const preAuthorizePayment = async (req, res) => {
       'amount': amount,
       'currency': currency,
       'paymentBrand': paymentBrand,
-      'paymentType': paymentType,
+      'paymentType': paymentTypeForPreAuth,
       'card.number': card.number,
       'card.holder': card.holder,
       'card.expiryMonth': card.expiryMonth,
@@ -104,7 +155,7 @@ const preAuthorizePayment = async (req, res) => {
         currency: currency,
         amount: amount,
         paymentBrand: paymentBrand,
-        paymentType: paymentType,
+        paymentType: paymentTypeForPreAuth, // Use 'PA' for pre-authorization
         card: paymentResponse.data.card || null,
         referenceId: paymentResponse.data.id || null,
         status: 'pending'
@@ -160,11 +211,20 @@ const capturePayment = async (req, res) => {
     }
 
     // Try to find the pre-authorization payment record to validate
+    // Note: Pre-authorization stores the payment ID in 'referenceId' field, not 'paymentId'
     let preAuthRecord = null;
     try {
+      // First try to find by referenceId (where pre-auth stored the payment ID)
       preAuthRecord = await Payment.findOne({
-        where: { paymentId: paymentId }
+        where: { referenceId: paymentId }
       });
+
+      // If not found, try paymentId field as fallback
+      if (!preAuthRecord) {
+        preAuthRecord = await Payment.findOne({
+          where: { paymentId: paymentId }
+        });
+      }
 
       // If found, validate that capture amount doesn't exceed pre-authorized amount
       if (preAuthRecord) {
@@ -180,6 +240,16 @@ const capturePayment = async (req, res) => {
           });
         }
 
+        // Check currency match
+        if (preAuthRecord.currency !== currency) {
+          return res.status(400).json({
+            error: 'Currency mismatch',
+            message: `Cannot capture in ${currency}. Pre-authorized currency was ${preAuthRecord.currency}`,
+            preAuthorizedCurrency: preAuthRecord.currency,
+            requestedCurrency: currency
+          });
+        }
+
         // Check if already captured
         if (preAuthRecord.status === 'success') {
           return res.status(400).json({
@@ -188,10 +258,81 @@ const capturePayment = async (req, res) => {
             paymentId: paymentId
           });
         }
+
+        // Check if pre-authorization failed
+        if (preAuthRecord.status === 'failed') {
+          return res.status(400).json({
+            error: 'Pre-authorization failed',
+            message: 'Cannot capture a payment that was not successfully pre-authorized',
+            paymentId: paymentId
+          });
+        }
+      } else {
+        // Payment record not found - log warning but continue (might be from external system)
+        console.warn(`Pre-authorization record not found for paymentId: ${paymentId}`);
       }
     } catch (dbError) {
       console.warn('Could not validate pre-authorization record:', dbError);
       // Continue with capture attempt even if we can't find the record
+    }
+
+    // Optional: Query payment gateway to check pre-authorization status before capture
+    // This helps identify issues before attempting capture
+    let preAuthStatus = null;
+    try {
+      const statusResponse = await queryPaymentStatus(paymentId);
+      preAuthStatus = statusResponse.data;
+      
+      // Check if pre-authorization result indicates it's not capturable
+      const statusResultCode = preAuthStatus.result?.code || '';
+      if (statusResultCode && !statusResultCode.startsWith('000')) {
+        return res.status(400).json({
+          error: 'Pre-authorization is not valid for capture',
+          message: `Pre-authorization status check failed: ${preAuthStatus.result?.description || 'Unknown error'}`,
+          code: statusResultCode,
+          preAuthStatus: preAuthStatus,
+          troubleshooting: {
+            possibleCauses: [
+              'Pre-authorization was reverted or expired',
+              'Pre-authorization was already captured',
+              'Pre-authorization failed'
+            ],
+            suggestions: [
+              'Check the pre-authorization status in the payment gateway',
+              'Create a new pre-authorization if this one is no longer valid',
+              'Verify the payment ID is correct'
+            ]
+          }
+        });
+      }
+
+      // Check if payment type indicates it's already captured
+      if (preAuthStatus.paymentType && preAuthStatus.paymentType !== 'PA' && preAuthStatus.paymentType !== 'DB') {
+        return res.status(400).json({
+          error: 'Payment already processed',
+          message: `This payment has already been processed. Payment type: ${preAuthStatus.paymentType}`,
+          preAuthStatus: preAuthStatus
+        });
+      }
+
+      // Validate amount if available in status
+      if (preAuthStatus.amount) {
+        const preAuthAmount = parseFloat(preAuthStatus.amount);
+        if (amountNum > preAuthAmount) {
+          return res.status(400).json({
+            error: 'Capture amount exceeds pre-authorized amount',
+            message: `Cannot capture ${amount} ${currency}. Pre-authorized amount was ${preAuthStatus.amount} ${preAuthStatus.currency || currency}`,
+            preAuthorizedAmount: preAuthStatus.amount,
+            preAuthorizedCurrency: preAuthStatus.currency || currency,
+            requestedAmount: amount,
+            requestedCurrency: currency
+          });
+        }
+      }
+    } catch (statusError) {
+      // Log but don't fail - continue with capture attempt
+      console.warn('Could not query pre-authorization status:', statusError.message);
+      // Continue with capture attempt even if status query fails
     }
 
     // Configuration - consider moving these to environment variables
@@ -251,20 +392,40 @@ const capturePayment = async (req, res) => {
     const resultDescription = paymentResponse.data.result?.description || '';
     const isSuccess = resultCode.startsWith('000');
 
-    // Update payment record in database using referencedId
+    // Provide helpful error messages for common error codes
+    let errorMessage = resultDescription;
+    if (resultCode === '700.400.100') {
+      errorMessage = 'Cannot capture payment. The pre-authorization may have been reverted, expired, or the capture amount exceeds the pre-authorized amount. Please check the pre-authorization status and try again.';
+    } else if (resultCode.startsWith('700')) {
+      errorMessage = `Payment gateway error: ${resultDescription}. Please verify the pre-authorization is still valid and try again.`;
+    }
+
+    // Update payment record in database
     try {
-      // Try to find payment record by the paymentId from URL (pre-authorization ID)
+      // Try to find payment record by referenceId first (where pre-auth stores the payment ID)
       let paymentRecord = await Payment.findOne({
-        where: { paymentId: paymentId }
+        where: { referenceId: paymentId }
       });
 
-      // If not found, try using referencedId from response
+      // If not found, try paymentId field
+      if (!paymentRecord) {
+        paymentRecord = await Payment.findOne({
+          where: { paymentId: paymentId }
+        });
+      }
+
+      // If still not found, try using referencedId from response
       if (!paymentRecord) {
         const referencedId = paymentResponse.data.referencedId || paymentResponse.data.referenceId;
         if (referencedId) {
           paymentRecord = await Payment.findOne({
-            where: { paymentId: referencedId }
+            where: { referenceId: referencedId }
           });
+          if (!paymentRecord) {
+            paymentRecord = await Payment.findOne({
+              where: { paymentId: referencedId }
+            });
+          }
         }
       }
 
@@ -294,9 +455,23 @@ const capturePayment = async (req, res) => {
       // Error response - return 400 Bad Request for payment gateway errors
       res.status(400).json({
         error: 'Payment capture failed',
-        message: resultDescription || 'Unable to capture payment',
+        message: errorMessage || resultDescription || 'Unable to capture payment',
         code: resultCode,
-        details: paymentResponse.data
+        details: paymentResponse.data,
+        troubleshooting: resultCode === '700.400.100' ? {
+          possibleCauses: [
+            'Pre-authorization was reverted or expired',
+            'Capture amount exceeds pre-authorized amount',
+            'Pre-authorization was already captured',
+            'Invalid payment workflow'
+          ],
+          suggestions: [
+            'Verify the pre-authorization is still valid',
+            'Check that the capture amount does not exceed the pre-authorized amount',
+            'Ensure the pre-authorization has not been captured already',
+            'Try creating a new pre-authorization if this one has expired'
+          ]
+        } : undefined
       });
     }
 
@@ -461,12 +636,16 @@ const managePayment = async (req, res) => {
 const userPaymentHistory = async (req, res) => {
   try {
     // Get userId from authenticated user
-    const userId = req.user?.id;
+    const userId = req.user?.id || req.user?.userId;
     if (!userId) {
+      console.error('No userId found in token:', req.user);
       return res.status(401).json({
-        error: 'User authentication required'
+        error: 'User authentication required',
+        message: 'User ID not found in authentication token'
       });
     }
+
+    console.log('Fetching payment history for userId:', userId);
 
     // Optional query parameters for filtering
     const { status, limit, offset } = req.query;
@@ -476,6 +655,8 @@ const userPaymentHistory = async (req, res) => {
     if (status) {
       whereClause.status = status;
     }
+
+    console.log('Query where clause:', whereClause);
 
     // Build query options
     const queryOptions = {
@@ -494,8 +675,23 @@ const userPaymentHistory = async (req, res) => {
     // Fetch payments from database
     const payments = await Payment.findAll(queryOptions);
 
+    console.log(`Found ${payments.length} payment(s) for userId: ${userId}`);
+    if (payments.length > 0) {
+      console.log('Sample payment userId:', payments[0].userId);
+      console.log('Sample payment id:', payments[0].id);
+    }
+
     // Get total count for pagination info
     const totalCount = await Payment.count({ where: whereClause });
+
+    console.log(`Total count: ${totalCount}`);
+
+    // Also check all payments in database for debugging (remove in production)
+    const allPayments = await Payment.findAll({
+      attributes: ['id', 'userId', 'amount', 'status', 'createdAt'],
+      limit: 10
+    });
+    console.log('All payments in database (first 10):', JSON.stringify(allPayments, null, 2));
 
     // Return payment history
     res.status(200).json({

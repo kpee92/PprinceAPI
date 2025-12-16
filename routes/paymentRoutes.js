@@ -22,7 +22,6 @@ const router = express.Router();
  *               - amount
  *               - currency
  *               - paymentBrand
- *               - paymentType
  *               - card
  *             properties:
  *               amount:
@@ -39,8 +38,9 @@ const router = express.Router();
  *                 description: Payment brand (VISA, MASTER, etc.)
  *               paymentType:
  *                 type: string
- *                 example: "CP"
- *                 description: Payment type
+ *                 example: "PA"
+ *                 description: "Payment type - will be automatically set to 'PA' (Pre-Authorization) for this endpoint. Do not use 'DB' (Debit) as it immediately captures the payment."
+ *                 readOnly: true
  *               card:
  *                 type: object
  *                 required:
@@ -211,7 +211,7 @@ router.post("/manage/:paymentId", authenticateToken, managePayment);
 /**
  * @swagger
  * /payments/history:
- *   get:
+ *   post:
  *     tags:
  *       - Payments
  *     summary: Get user payment history
@@ -325,7 +325,7 @@ router.post("/manage/:paymentId", authenticateToken, managePayment);
  *       500:
  *         description: Failed to fetch payment history
  */
-router.get("/history", authenticateToken, userPaymentHistory);
+router.post("/history", authenticateToken, userPaymentHistory);
 
 module.exports = router;
 
