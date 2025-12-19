@@ -10,6 +10,7 @@ const {
   twoFaVerify,
   loginUser,
 } = require("../controllers/userController");
+const { addWallet, getWallets } = require("../controllers/walletController");
 const { authenticateToken } = require("../middleware/authMiddleware");
 
 const router = express.Router();
@@ -238,5 +239,44 @@ router.post("/twofa/enable", authenticateToken, twoFaEnable);
  *         description: 2FA enabled successfully
  */
 router.post("/twofa/verify", authenticateToken, twoFaVerify);
+
+/**
+ * @swagger
+ * /users/add-wallet:
+ *   post:
+ *     summary: Add a wallet for the authenticated user
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               walletAddress:
+ *                 type: string
+ *               network:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Wallet added successfully
+ */
+router.post("/add-wallet", authenticateToken, addWallet);
+
+/**
+ * @swagger
+ * /users/wallets:
+ *   post:
+ *     summary: Get all wallets for the authenticated user
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of user's wallets
+ */
+router.post("/wallets", authenticateToken, getWallets);
+
+//router.post('/setopay', handleSetopayWebhook);
 
 module.exports = router;

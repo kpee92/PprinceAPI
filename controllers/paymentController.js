@@ -2,7 +2,13 @@ const https = require('https');
 const querystring = require('querystring');
 const { DataTypes } = require('sequelize');
 const sequelize = require('../db');
+// const Payment = require('../models/payment')(sequelize, DataTypes);
 const Payment = require('../models/payment')(sequelize, DataTypes);
+const CryptoTransfer = require('../models/cryptoTransferModel')(sequelize, DataTypes);
+const User = require('../models/user')(sequelize, DataTypes);
+// const https = require('https'); // agar blockchain SDK use karoge, replace kar sakte ho
+const Web3 = require('web3'); // ya ethers.js, depending on your setup
+require('dotenv').config()
 
 /**
  * Query payment status from payment gateway
@@ -14,7 +20,7 @@ const queryPaymentStatus = async (paymentId) => {
   const paymentHost = process.env.PAYMENT_HOST || 'eu-test.oppwa.com';
 
   const path = `/v1/payments/${paymentId}?entityId=${entityId}`;
-  
+
   const options = {
     port: 443,
     host: paymentHost,
@@ -26,7 +32,7 @@ const queryPaymentStatus = async (paymentId) => {
   };
 
   return new Promise((resolve, reject) => {
-    const getRequest = https.request(options, function(response) {
+    const getRequest = https.request(options, function (response) {
       const buf = [];
       response.on('data', chunk => {
         buf.push(Buffer.from(chunk));
@@ -83,9 +89,9 @@ const preAuthorizePayment = async (req, res) => {
     const paymentTypeForPreAuth = 'PA';
 
     // Configuration - consider moving these to environment variables
-    const entityId = process.env.PAYMENT_ENTITY_ID || '8ac7a4c79394bdc801939736f17e063d';
-    const authorization = process.env.PAYMENT_AUTHORIZATION || 'Bearer OGFjN2E0Yzc5Mzk0YmRjODAxOTM5NzM2ZjFhNzA2NDF8enlac1lYckc4QXk6bjYzI1NHNng=';
-    const paymentHost = process.env.PAYMENT_HOST || 'eu-test.oppwa.com';
+    const entityId = process.env.PAYMENT_ENTITY_ID 
+    const authorization = process.env.PAYMENT_AUTHORIZATION 
+    const paymentHost = process.env.PAYMENT_HOST 
 
     const path = '/v1/payments';
     const data = querystring.stringify({
@@ -115,7 +121,7 @@ const preAuthorizePayment = async (req, res) => {
 
     // Make the payment request
     const paymentResponse = await new Promise((resolve, reject) => {
-      const postRequest = https.request(options, function(response) {
+      const postRequest = https.request(options, function (response) {
         const buf = [];
         response.on('data', chunk => {
           buf.push(Buffer.from(chunk));
@@ -147,11 +153,10 @@ const preAuthorizePayment = async (req, res) => {
         error: 'User authentication required'
       });
     }
-
     // Save payment record to database
     try {
       await Payment.create({
-        userId: userId,
+         userId: userId,
         currency: currency,
         amount: amount,
         paymentBrand: paymentBrand,
@@ -282,7 +287,7 @@ const capturePayment = async (req, res) => {
     try {
       const statusResponse = await queryPaymentStatus(paymentId);
       preAuthStatus = statusResponse.data;
-      
+
       // Check if pre-authorization result indicates it's not capturable
       const statusResultCode = preAuthStatus.result?.code || '';
       if (statusResultCode && !statusResultCode.startsWith('000')) {
@@ -336,9 +341,9 @@ const capturePayment = async (req, res) => {
     }
 
     // Configuration - consider moving these to environment variables
-    const entityId = process.env.PAYMENT_ENTITY_ID || '8ac7a4c79394bdc801939736f17e063d';
-    const authorization = process.env.PAYMENT_AUTHORIZATION || 'Bearer OGFjN2E0Yzc5Mzk0YmRjODAxOTM5NzM2ZjFhNzA2NDF8enlac1lYckc4QXk6bjYzI1NHNng=';
-    const paymentHost = process.env.PAYMENT_HOST || 'eu-test.oppwa.com';
+    const entityId = process.env.PAYMENT_ENTITY_ID 
+    const authorization = process.env.PAYMENT_AUTHORIZATION
+    const paymentHost = process.env.PAYMENT_HOST
 
     const path = `/v1/payments/${paymentId}`;
     const data = querystring.stringify({
@@ -362,7 +367,7 @@ const capturePayment = async (req, res) => {
 
     // Make the capture payment request
     const paymentResponse = await new Promise((resolve, reject) => {
-      const postRequest = https.request(options, function(response) {
+      const postRequest = https.request(options, function (response) {
         const buf = [];
         response.on('data', chunk => {
           buf.push(Buffer.from(chunk));
@@ -552,7 +557,7 @@ const managePayment = async (req, res) => {
 
     // Make the manage payment request
     const paymentResponse = await new Promise((resolve, reject) => {
-      const postRequest = https.request(options, function(response) {
+      const postRequest = https.request(options, function (response) {
         const buf = [];
         response.on('data', chunk => {
           buf.push(Buffer.from(chunk));
@@ -585,10 +590,10 @@ const managePayment = async (req, res) => {
       if (isSuccess) {
         // Get referencedId from response (this is the original payment ID)
         const referencedId = paymentResponse.data.referencedId || paymentResponse.data.referenceId;
-        
+
         // Use referencedId to find the payment record, fallback to paymentId from URL if not found
         const searchId = referencedId || paymentId;
-        
+
         const paymentRecord = await Payment.findOne({
           where: { paymentId: searchId }
         });
@@ -713,6 +718,255 @@ const userPaymentHistory = async (req, res) => {
     });
   }
 };
+
+
+// // Admin wallet config
+// const ADMIN_WALLET_ADDRESS = process.env.ADMIN_WALLET_ADDRESS;
+// const ADMIN_PRIVATE_KEY = process.env.ADMIN_PRIVATE_KEY;
+
+// // Network RPC URLs
+// const NETWORK_RPC = {
+//   BSC: process.env.BSC_RPC,
+//   ETH: process.env.ETH_RPC,
+//   // add other networks if needed
+// };
+
+// const transferCrypto = async (req, res) => {
+//   try {
+//     const { paymentId, walletAddress, cryptoCurrency, network, fiatAmount } = req.body;
+
+//     // 1️⃣ Validate request
+//     if (!paymentId || !walletAddress || !cryptoCurrency || !network || !fiatAmount) {
+//       return res.status(400).json({ error: 'Missing required fields' });
+//     }
+
+//     // 2️⃣ Fetch payment
+//     const paymentRecord = await Payment.findOne({ where: { id: paymentId } });
+//     if (!paymentRecord) {
+//       return res.status(404).json({ error: 'Payment not found' });
+//     }
+
+//     // 3️⃣ Check if payment approved
+//     if (paymentRecord.status !== 'success') {
+//       return res.status(400).json({ error: 'Payment not approved yet' });
+//     }
+
+//     // 4️⃣ Check if crypto already transferred
+//     if (paymentRecord.isProcessed) {
+//       return res.status(400).json({ error: 'Crypto already transferred for this payment' });
+//     }
+
+//     // 5️⃣ Convert fiat to crypto amount (example rate, replace with real API)
+//     // Here assuming 1 USD = 1 USDT for simplicity
+//     const cryptoAmount = fiatAmount; 
+
+//     // 6️⃣ Setup blockchain provider
+//     const web3 = new Web3(new Web3.providers.HttpProvider(NETWORK_RPC[network]));
+
+//     // 7️⃣ Create transaction object
+//     const tx = {
+//       from: ADMIN_WALLET_ADDRESS,
+//       to: walletAddress,
+//       value: web3.utils.toWei(cryptoAmount.toString(), 'ether'), // for native coin transfer, use token transfer logic for ERC20
+//       gas: 21000,
+//     };
+
+//     // 8️⃣ Sign transaction
+//     const signedTx = await web3.eth.accounts.signTransaction(tx, ADMIN_PRIVATE_KEY);
+
+//     // 9️⃣ Send transaction
+//     const txReceipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
+
+//     //  🔟 Save transfer record
+//     await CryptoTransfer.create({
+//       userId: paymentRecord.userId,
+//       paymentId: paymentRecord.id,
+//       cryptoAmount,
+//       cryptoCurrency,
+//       walletAddress,
+//       fromWalletAddress: ADMIN_WALLET_ADDRESS,
+//       network,
+//       txHash: txReceipt.transactionHash,
+//       status: 'success'
+//     });
+
+//     // 11️⃣ Update payment record
+//     await paymentRecord.update({ isProcessed: true, transferStatus: 'success' });
+
+//     // 12️⃣ Send response
+//     res.status(200).json({
+//       message: 'Crypto transferred successfully',
+//       cryptoAmount,
+//       cryptoCurrency,
+//       txHash: txReceipt.transactionHash,
+//     });
+
+//   } catch (error) {
+//     console.error('Crypto transfer error:', error);
+//     res.status(500).json({ error: 'Crypto transfer failed', message: error.message });
+//   }
+// };
+
+//=====================WEBHOOK
+/**
+ * Setopay Webhook Handler
+ * Ye API sirf Setopay hit karega
+ */
+// exports.handleSetopayWebhook = async (req, res) => {
+//   try {
+//     const payload = req.body;
+
+//     console.log('🔔 Webhook received:', payload);
+
+//     // 1️⃣ Event check
+//     if (payload.event !== 'payment.success') {
+//       return res.status(200).send('Event ignored');
+//     }
+
+//     const paymentId = payload.paymentId;
+
+//     // 2️⃣ Payment record find karo
+//     const payment = await Payment.findOne({
+//       where: { referenceId: paymentId }
+//     });
+
+//     if (!payment) {
+//       console.warn('Payment not found:', paymentId);
+//       return res.status(200).send('Payment not found');
+//     }
+
+//     // 3️⃣ Duplicate webhook protection
+//     if (payment.status === 'success') {
+//       return res.status(200).send('Already processed');
+//     }
+
+//     // 4️⃣ Mark authorized
+//     await payment.update({ status: 'authorized' });
+
+//     // 5️⃣ Capture payment (REAL MONEY CUT)
+//     const captureResult = await capturePaymentInternal({
+//       paymentId,
+//       amount: payment.amount,
+//       currency: payment.currency
+//     });
+
+//     if (!captureResult.success) {
+//       await payment.update({ status: 'failed' });
+//       return res.status(200).send('Capture failed');
+//     }
+
+//     // 6️⃣ Mark success
+//     await payment.update({ status: 'success' });
+
+//     // 7️⃣ (OPTIONAL) Crypto transfer yahan call karo
+//     // await transferCryptoToUser(payment.userId, payment.amount);
+
+//     return res.status(200).send('OK');
+
+//   } catch (error) {
+//     console.error('Webhook error:', error);
+//     return res.status(500).send('Webhook error');
+//   }
+// };
+
+/**
+ * Webhook handler: Payment success → Capture payment
+ * This is the ONLY place where capture happens
+//  */
+// const setopayWebhookAndCapture = async (req, res) => {
+//   try {
+//     const payload = req.body;
+
+//     console.log('Setopay Webhook:', payload);
+
+//     // 1️⃣ Basic validation
+//     if (payload.event !== 'payment.success') {
+//       return res.status(200).send('Ignored');
+//     }
+
+//     const paymentId = payload.paymentId;
+//     if (!paymentId) {
+//       return res.status(400).send('PaymentId missing');
+//     }
+
+//     // 2️⃣ Find payment in DB (created during preAuthorizePayment)
+//     const payment = await Payment.findOne({
+//       where: { referenceId: paymentId }
+//     });
+
+//     if (!payment) {
+//       return res.status(200).send('Payment not found');
+//     }
+
+//     // 3️⃣ Avoid duplicate processing (VERY IMPORTANT)
+//     if (payment.status === 'success') {
+//       return res.status(200).send('Already processed');
+//     }
+
+//     // 4️⃣ CALL SETOPAY CAPTURE (CP)
+//     const entityId = process.env.PAYMENT_ENTITY_ID;
+//     const authorization = process.env.PAYMENT_AUTHORIZATION;
+//     const paymentHost = process.env.PAYMENT_HOST;
+
+//     const data = querystring.stringify({
+//       entityId,
+//       amount: payment.amount,
+//       currency: payment.currency,
+//       paymentType: 'CP'
+//     });
+
+//     const options = {
+//       host: paymentHost,
+//       port: 443,
+//       path: `/v1/payments/${paymentId}`,
+//       method: 'POST',
+//       headers: {
+//         'Content-Type': 'application/x-www-form-urlencoded',
+//         'Content-Length': data.length,
+//         Authorization: authorization
+//       }
+//     };
+
+//     const captureResponse = await new Promise((resolve, reject) => {
+//       const reqCapture = https.request(options, (response) => {
+//         const buf = [];
+//         response.on('data', d => buf.push(d));
+//         response.on('end', () => {
+//           resolve(JSON.parse(Buffer.concat(buf).toString()));
+//         });
+//       });
+
+//       reqCapture.on('error', reject);
+//       reqCapture.write(data);
+//       reqCapture.end();
+//     });
+
+//     const resultCode = captureResponse?.result?.code || '';
+
+//     if (!resultCode.startsWith('000')) {
+//       return res.status(400).json({
+//         error: 'Capture failed',
+//         details: captureResponse
+//       });
+//     }
+
+//     // 5️⃣ Update DB
+//     await payment.update({
+//       status: 'success',
+//       paymentId: captureResponse.id
+//     });
+
+//     // 6️⃣ OPTIONAL: Crypto transfer trigger
+//     // await transferCryptoToUser(payment.userId, payment.amount);
+
+//     return res.status(200).send('Payment captured successfully');
+
+//   } catch (err) {
+//     console.error('Webhook Capture Error:', err);
+//     return res.status(500).send('Internal error');
+//   }
+// };
+
 
 module.exports = {
   preAuthorizePayment,

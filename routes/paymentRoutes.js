@@ -88,7 +88,8 @@ const router = express.Router();
  *       500:
  *         description: Payment processing failed
  */
-router.post("/pre-authorize", authenticateToken, preAuthorizePayment);
+  router.post("/pre-authorize", authenticateToken, preAuthorizePayment);
+// router.post("/pre-authorize",  preAuthorizePayment);
 
 /**
  * @swagger

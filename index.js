@@ -7,6 +7,7 @@ const sequelize = require("./db");
 const userRoutes = require("./routes/userRoutes");
 const authRoutes = require("./routes/authRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
+const userKycRoutes = require("./routes/userKycRoutes");
 
 // Swagger definition
 const swaggerOptions = {
@@ -94,6 +95,7 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 app.use("/users", userRoutes);
 app.use("/auth", authRoutes);
 app.use("/payments", paymentRoutes);
+app.use("/api/kyc", userKycRoutes);
 
 // Sync database and start server
 sequelize
