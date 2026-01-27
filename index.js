@@ -3,6 +3,8 @@ const express = require("express");
 const cors = require("cors");
 const swaggerUi = require("swagger-ui-express");
 const swaggerJsdoc = require("swagger-jsdoc");
+const bodyParser = require("body-parser");
+
 const sequelize = require("./db");
 const userRoutes = require("./routes/userRoutes");
 const authRoutes = require("./routes/authRoutes");
@@ -19,8 +21,23 @@ const swaggerOptions = {
       description: "API for managing users with Sequelize and MySQL",
     },
     servers: [
+
+      {
+        url: "http://api.pprince.io",
+      },
       {
         url: "http://localhost:3000",
+      },
+      {
+        url: "http://user.pprince.io",
+      },
+      {
+        url: "http://api.pprince.io",
+      }, {
+        url: "http://api.pprince.io/",
+      },
+      {
+        url: "https://api.pprince.io/",
       },
     ],
     components: {
@@ -44,45 +61,74 @@ const PORT = process.env.PORT || 3000;
 swaggerOptions.definition.servers[0].url = `http://localhost:${PORT}`;
 const swaggerDocs = swaggerJsdoc(swaggerOptions);
 
-// CORS Configuration
+// // CORS Configuration
+// const corsOptions = {
+//   origin: function (origin, callback) {
+//     // Allow requests with no origin (like mobile apps or curl requests)
+//     if (!origin) return callback(null, true);
+
+//     // In production, you should specify allowed origins
+//     // For now, allow all origins for development
+//     callback(null, true);
+
+//     // Example for production:
+//     const allowedOrigins = ['http://localhost:3000', 'https://yourdomain.com', "https://www.pprince.io", "http://admin.pprince.io"];
+//     if (allowedOrigins.indexOf(origin) !== -1) {
+//       callback(null, true);
+//     } else {
+//       callback(new Error('Not allowed by CORS'));
+//     }
+//   },
+//   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+//   allowedHeaders: [
+//     "Content-Type",
+//     "Authorization",
+//     "X-Requested-With",
+//     "Accept",
+//     "Origin",
+//     "Access-Control-Request-Method",
+//     "Access-Control-Request-Headers"
+//   ],
+//   exposedHeaders: ["Authorization"],
+//   credentials: true, // Allow cookies/auth headers
+//   preflightContinue: false,
+//   optionsSuccessStatus: 204
+// };
+
+const allowedOrigins = [
+  "https://www.pprince.io",
+  "http://127.0.0.1:3000",
+  "http://localhost:3000",
+  "https://admin.pprince.io",
+  "https://user.pprince.io"
+];
+
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
-    // In production, you should specify allowed origins
-    // For now, allow all origins for development
-    callback(null, true);
-    
-    // Example for production:
-    // const allowedOrigins = ['http://localhost:3000', 'https://yourdomain.com'];
-    // if (allowedOrigins.indexOf(origin) !== -1) {
-    //   callback(null, true);
-    // } else {
-    //   callback(new Error('Not allowed by CORS'));
-    // }
+
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
   },
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: [
-    "Content-Type",
-    "Authorization",
-    "X-Requested-With",
-    "Accept",
-    "Origin",
-    "Access-Control-Request-Method",
-    "Access-Control-Request-Headers"
-  ],
-  exposedHeaders: ["Authorization"],
-  credentials: true, // Allow cookies/auth headers
-  preflightContinue: false,
-  optionsSuccessStatus: 204
+  credentials: true
 };
+
 
 // Apply CORS middleware
 app.use(cors(corsOptions));
 
 // Handle preflight requests explicitly
 app.options("*", cors(corsOptions));
+
+app.use(
+  "/api/kyc/webhookSumsub",
+  bodyParser.raw({ type: "application/json" }),
+  require("./controllers/userKycController").sumsubWebhook
+);
+
 
 // Middleware
 app.use(express.json());

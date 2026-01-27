@@ -1,7 +1,7 @@
 
 const crypto = require("crypto");
 const axios = require("axios");
-
+require('dotenv').config()
 const SUMSUB_BASE_URL = process.env.SUMSUB_BASE_URL;
 const SUMSUB_APP_TOKEN = process.env.SUMSUB_APP_TOKEN;
 const SUMSUB_SECRET_KEY = process.env.SUMSUB_SECRET_KEY;

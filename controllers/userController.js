@@ -2,22 +2,76 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const speakeasy = require("speakeasy");
 const qrcode = require("qrcode");
-const { DataTypes } = require("sequelize");
+const { DataTypes, Op } = require("sequelize");
 const sequelize = require("../db");
 const User = require("../models/user")(sequelize, DataTypes);
 const { sendEmail } = require("../utils/email");
+require('dotenv').config()
+
+
+// const registerUser = async (req, res) => {
+//   try {
+//     const { firstName, lastName, email, password } = req.body;
+
+//     // Hash the password
+//     const hashedPassword = await bcrypt.hash(password, 10);
+
+//     // Generate 6-digit token
+//     const token = Math.floor(100000 + Math.random() * 900000).toString();
+
+//     // Hash the token for storage
+//     const hashedToken = await bcrypt.hash(token, 10);
+
+//     const user = await User.create({
+//       firstName,
+//       lastName,
+//       email,
+//       password: hashedPassword,
+//       emailToken: hashedToken,
+//     });
+
+//     // Send verification email
+//     // const verificationUrl = `http://localhost:3000/auth/confirm_email?token=${token}`;
+//     const verificationUrl = `https://user.pprince.io/auth/confirm_email?token=${token}`;
+
+//     const emailResult = await sendEmail(
+//       email,
+//       "Email Verification",
+//       `Hello ${firstName},\n\nPlease verify your email by clicking the link: ${verificationUrl}`,
+//       `<p>Hello ${firstName},</p><p>Please verify your email by clicking the button below:</p><a href="${verificationUrl}" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">Click Here to Verify Email</a><p>Thank you,</p>`
+//     );
+
+//     if (!emailResult.success) {
+//       console.error("Failed to send verification email:", emailResult.error);
+//       // Still proceed with registration, but log the error
+//     }
+
+//     res.status(201).json({
+//       message:
+//         "User registered successfully. Please check your email for verification.",
+//       user: { id: user.id },
+//     });
+//   } catch (error) {
+//     res.status(400).json({ error: error.message });
+//   }
+// };
 
 const registerUser = async (req, res) => {
   try {
     const { firstName, lastName, email, password } = req.body;
 
-    // Hash the password
+    const existingUser = await User.findOne({ where: { email } });
+    if (existingUser) {
+      return res.status(400).json({ error: "User already exists" });
+    }
+
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Generate 6-digit token
+
     const token = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // Hash the token for storage
+
     const hashedToken = await bcrypt.hash(token, 10);
 
     const user = await User.create({
@@ -28,8 +82,10 @@ const registerUser = async (req, res) => {
       emailToken: hashedToken,
     });
 
-    // Send verification email
-    const verificationUrl = `http://localhost:3000/auth/confirm_email?token=${token}`;
+
+    // const verificationUrl = `http://localhost:3000/auth/confirm_email?token=${token}`;
+    const verificationUrl = `https://user.pprince.io/auth/confirm_email?token=${token}`;
+
     const emailResult = await sendEmail(
       email,
       "Email Verification",
@@ -39,7 +95,7 @@ const registerUser = async (req, res) => {
 
     if (!emailResult.success) {
       console.error("Failed to send verification email:", emailResult.error);
-      // Still proceed with registration, but log the error
+
     }
 
     res.status(201).json({
@@ -52,14 +108,35 @@ const registerUser = async (req, res) => {
   }
 };
 
+// const getUsers = async (req, res) => {
+//   try {
+//     const users = await User.findAll();
+//     res.json(users);
+//   } catch (error) {
+//     res.status(500).json({ error: error.message });
+//   }
+// };
+
 const getUsers = async (req, res) => {
   try {
-    const users = await User.findAll();
-    res.json(users);
+    const users = await User.findAll({
+      order: [["createdAt", "DESC"]],
+    });
+
+    const formattedUsers = users.map((user) => {
+      // Convert Sequelize instance to plain object and add blockStatus
+      return {
+        ...user.toJSON(),
+        blockStatus: user.is_block ? "Block" : "Unblock",
+      };
+    });
+
+    res.json(formattedUsers);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
+
 
 const createUser = async (req, res) => {
   try {
@@ -194,6 +271,80 @@ const twoFaVerify = async (req, res) => {
   }
 };
 
+// const loginUser = async (req, res) => {
+//   try {
+//     const { email, password, twoFaCode } = req.body;
+
+//     // Find user by email
+//     const user = await User.findOne({ where: { email } });
+//     if (!user) {
+//       return res.status(401).json({ error: "Invalid email or password" });
+//     }
+
+//     // Check if email is verified
+//     if (user.emailVerify !== 1) {
+//       return res.status(403).json({ error: "Please verify your email first" });
+//     }
+
+//     // Check password
+//     const isPasswordValid = await bcrypt.compare(password, user.password);
+//     if (!isPasswordValid) {
+//       return res.status(401).json({ error: "Invalid email or password" });
+//     }
+
+//     // Check 2FA status
+//     if (user.twoFaStatus === 1) {
+//       // 2FA is enabled, require 2FA code
+//       if (!twoFaCode) {
+//         return res.status(200).json({
+//           message: "Please enter your 2FA code",
+//           requiresTwoFa: true,
+//           userId: user.id,
+//         });
+//       }
+
+//       // Verify 2FA code
+//       const isTwoFaValid = speakeasy.totp.verify({
+//         secret: user.twoFaSecret,
+//         encoding: "base32",
+//         token: twoFaCode,
+//         window: 2,
+//       });
+
+//       if (!isTwoFaValid) {
+//         return res.status(401).json({ error: "Invalid 2FA code" });
+//       }
+//     }
+
+//     // Generate JWT token
+//     const token = jwt.sign(
+//       {
+//         id: user.id,
+//         email: user.email,
+//       },
+//       process.env.JWT_SECRET || "your-secret-key",
+//       {
+//         expiresIn: process.env.JWT_EXPIRES_IN || "24h", // Token expires in 24 hours
+//       }
+//     );
+
+//     // Login successful
+//     res.json({
+//       message: "Login successful",
+//       token: token,
+//       user: {
+//         id: user.id,
+//         firstName: user.firstName,
+//         lastName: user.lastName,
+//         email: user.email,
+//         twoFaStatus: user.twoFaStatus,
+//       },
+//     });
+//   } catch (error) {
+//     res.status(500).json({ error: error.message });
+//   }
+// };
+
 const loginUser = async (req, res) => {
   try {
     const { email, password, twoFaCode } = req.body;
@@ -202,6 +353,11 @@ const loginUser = async (req, res) => {
     const user = await User.findOne({ where: { email } });
     if (!user) {
       return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    // Check if user is blocked
+    if (user.is_block) {
+      return res.status(403).json({ error: "You are temporarily blocked by the admin." });
     }
 
     // Check if email is verified
@@ -244,6 +400,7 @@ const loginUser = async (req, res) => {
       {
         id: user.id,
         email: user.email,
+        user_role: user.user_role,
       },
       process.env.JWT_SECRET || "your-secret-key",
       {
@@ -267,6 +424,7 @@ const loginUser = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
 
 const confirmEmail = async (req, res) => {
   try {
@@ -357,7 +515,8 @@ const forgotPassword = async (req, res) => {
     await User.update({ resetToken: hashedToken }, { where: { id: user.id } });
 
     // Send reset email
-    const resetUrl = `http://localhost:3000/auth/forgot-password2?token=${token}`;
+    // const resetUrl = `http://localhost:3000/auth/forgot-password2?token=${token}`;
+    const resetUrl = `https://user.pprince.io/auth/forgot-password2?token=${token}`;
     const emailResult = await sendEmail(
       email,
       "Password Reset",
@@ -375,6 +534,98 @@ const forgotPassword = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+
+const blockUser = async (req, res) => {
+  try {
+
+    const { userId } = req.body;
+
+
+    if (!userId) {
+      return res.status(400).json({ error: "User ID is required" });
+    }
+
+    const user = await User.findOne({
+      where: {
+        id: userId, // ✅ UUID column
+      },
+    });
+
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (user.is_block === true) {
+      return res.json({ message: "User already blocked" });
+    }
+
+    await user.update({ is_block: true });
+
+    return res.json({ message: "User blocked successfully" });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+
+const unblockUser = async (req, res) => {
+  try {
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ error: "User ID is required" });
+    }
+
+    const [updated] = await User.update(
+      { is_block: false },
+      { where: { id: userId, isDelete: 0 } }
+    );
+
+    if (updated) {
+      res.json({ message: "User unblocked successfully" });
+    } else {
+      res.status(404).json({ error: "User not found" });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+const getUserStats = async (req, res) => {
+  try {
+    const totalUsers = await User.count();
+
+    // Calculate 24 hours ago
+    const yesterday = new Date(new Date() - 24 * 60 * 60 * 1000);
+
+    const registerUserLast24hr = await User.count({
+      where: {
+        createdAt: {
+          [Op.gt]: yesterday
+        }
+      }
+    });
+
+    const activeUsers = await User.count({
+      where: {
+        emailVerify: 1,
+        is_block: false, // Assuming 0 or false for not blocked, based on previous code
+        isDelete: 0
+      }
+    });
+
+    res.json({
+      totalUsers,
+      registerUserLast24hr,
+      activeUsers
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 
 const updatePassword = async (req, res) => {
   try {
@@ -421,6 +672,8 @@ const updatePassword = async (req, res) => {
   }
 };
 
+
+
 module.exports = {
   registerUser,
   getUsers,
@@ -435,4 +688,7 @@ module.exports = {
   verifyEmail,
   forgotPassword,
   updatePassword,
+  blockUser,
+  unblockUser,
+  getUserStats,
 };

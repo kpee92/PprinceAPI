@@ -9,9 +9,12 @@ const {
   twoFaEnable,
   twoFaVerify,
   loginUser,
+  blockUser,
+  unblockUser,
+  getUserStats,
 } = require("../controllers/userController");
 const { addWallet, getWallets } = require("../controllers/walletController");
-const { authenticateToken } = require("../middleware/authMiddleware");
+const { authenticateToken, authorizeRole } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
@@ -263,6 +266,77 @@ router.post("/twofa/verify", authenticateToken, twoFaVerify);
  *         description: Wallet added successfully
  */
 router.post("/add-wallet", authenticateToken, addWallet);
+
+
+/**
+ * @swagger
+ * /users/userblockbyadmin:
+ *   post:
+ *     summary: Block a user (Admin only)
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               userId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: User blocked successfully
+ */
+router.post("/userblockbyadmin", authenticateToken, authorizeRole(['admin']), blockUser);
+
+
+/**
+ * @swagger
+ * /users/userunblockbyadmin:
+ *   post:
+ *     summary: Unblock a user (Admin only)
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               userId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: User unblocked successfully
+ */
+router.post("/userunblockbyadmin", authenticateToken, authorizeRole(['admin']), unblockUser);
+
+/**
+ * @swagger
+ * /users/userstats:
+ *   post:
+ *     summary: Get user statistics (Total, Last 24hr, Active)
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User statistics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 totalUsers:
+ *                   type: integer
+ *                 registerUserLast24hr:
+ *                   type: integer
+ *                 activeUsers:
+ *                   type: integer
+ */
+router.post("/userstats", authenticateToken, authorizeRole(['admin']), getUserStats);
+
 
 /**
  * @swagger

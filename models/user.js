@@ -143,6 +143,16 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.TINYINT,
         defaultValue: 0,
       },
+      user_role: {
+        type: DataTypes.STRING, // 'admin' or 'user'
+        defaultValue: 'user',
+        allowNull: false,
+      },
+      is_block: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+        allowNull: false,
+      },
 
       // OTP / tokens
       otp: {

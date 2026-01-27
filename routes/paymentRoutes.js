@@ -1,5 +1,5 @@
 const express = require("express");
-const { preAuthorizePayment, capturePayment, managePayment, userPaymentHistory } = require("../controllers/paymentController");
+const { preAuthorizePayment, capturePayment, managePayment, userPaymentHistory, handleSetopayWebhook } = require("../controllers/paymentController");
 const { authenticateToken } = require("../middleware/authMiddleware");
 
 const router = express.Router();
@@ -88,7 +88,7 @@ const router = express.Router();
  *       500:
  *         description: Payment processing failed
  */
-  router.post("/pre-authorize", authenticateToken, preAuthorizePayment);
+router.post("/pre-authorize", authenticateToken, preAuthorizePayment);
 // router.post("/pre-authorize",  preAuthorizePayment);
 
 /**
@@ -208,6 +208,20 @@ router.post("/capture/:paymentId", authenticateToken, capturePayment);
  *         description: Payment management failed
  */
 router.post("/manage/:paymentId", authenticateToken, managePayment);
+
+/**
+ * @swagger
+ * /payments/webhook:
+ *   post:
+ *     summary: Receive Setopay Payment Webhook
+ *     description: Endpoint for Setopay server-to-server notifications.
+ *     tags:
+ *       - Payments
+ *     responses:
+ *       200:
+ *         description: Webhook received processed
+ */
+router.post("/webhook", handleSetopayWebhook);
 
 /**
  * @swagger

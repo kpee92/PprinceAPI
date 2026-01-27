@@ -161,7 +161,7 @@ router.get("/kycStatus", authenticateToken, getKycStatus);
  *       500:
  *         description: Internal server error
  */
-router.post("/webhookSumsub", sumsubWebhook);
+// router.post("/webhookSumsub", sumsubWebhook);
 
 module.exports = router;
 
